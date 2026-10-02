@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>萬用旅遊行程編輯與 A4 列印系統 - Universal Itinerary Builder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #0f172a;
+            color: #1e293b;
+        }
+
+        /* Screen Presentation Styling */
+        .page-container {
+            width: 210mm;
+            min-height: 297mm;
+            background: #ffffff;
+            margin: 20px auto;
+            padding: 14mm 14mm 10mm 14mm;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+            border-radius: 8px;
+            position: relative;
+            box-sizing: border-box;
+            break-after: page;
+            page-break-after: always;
+        }
+        .page-container:last-child {
+            break-after: auto;
+            page-break-after: auto;
+        }
+
+        /* Printable Color Pills */
+        .pill-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 8pt;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+        .pill-food { background-color: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+        .pill-spot { background-color: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+        .pill-traffic { background-color: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+        .pill-hotel { background-color: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+        .pill-shop { background-color: #fff7ed; color: #9a3412; border: 1px solid #ffedd5; }
+        .pill-note { background-color: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
+
+        /* Custom Modal Overlay */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+
+        /* Print Media Layout Settings */
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+            html, body {
+                background: #ffffff !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .page-container {
+                width: 210mm !important;
+                height: 297mm !important;
+                min-height: 297mm !important;
+                margin: 0 !important;
+                padding: 10mm 12mm 8mm 12mm !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                break-after: page !important;
+                page-break-after: always !important;
+                overflow: hidden !important;
+            }
+            .page-container:last-child {
+                break-after: auto !important;
+                page-break-after: auto !important;
+            }
+            input, textarea, select {
+                border: none !important;
+                background: transparent !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                resize: none !important;
+            }
+            select {
+                -webkit-appearance: none;
+                -moz-appearance: none;
+                appearance: none;
+            }
+        }
+    </style>
+</head>
+<body class="pb-16">
+
+    <!-- Top Navigation Toolbar -->
+    <header class="no-print sticky top-0 z-50 bg-slate-900 border-b border-slate-800 text-white px-4 py-3 shadow-xl">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">🗺️</span>
+                <div>
+                    <h1 class="text-lg font-bold tracking-wide text-amber-400">萬用旅遊行程編輯器 (Universal Itinerary Builder)</h1>
+                    <p class="text-xs text-slate-400">全區可編輯 • 自動儲存 • 防錯重置機制 • A4 完美列印</p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-2 flex-wrap text-xs">
+                <button onclick="addNewDay()" class="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition flex items-center gap-1 shadow">
+                    <span>➕</span> 新增一天
+                </button>
+                <button onclick="exportJSON()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-lg border border-slate-700 transition flex items-center gap-1">
+                    <span>💾</span> 匯出行程檔
+                </button>
+                <label class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-lg border border-slate-700 transition cursor-pointer flex items-center gap-1">
+                    <span>📂</span> 匯入行程檔
+                    <input type="file" id="importFileInput" onchange="importJSON(event)" class="hidden" accept=".json">
+                </label>
+                <button onclick="confirmResetModal()" class="px-3 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg border border-amber-500 transition flex items-center gap-1 shadow">
+                    <span>🔄</span> 重置預設範例
+                </button>
+                <button onclick="window.print()" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg shadow-lg shadow-red-900/40 transition flex items-center gap-1.5 transform active:scale-95 ml-2">
+                    <span>🖨️</span> 列印 / 儲存為 A4 PDF
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Container -->
+    <div class="max-w-7xl mx-auto px-4 mt-4">
+        <!-- Quick Guidance Box -->
+        <div class="no-print bg-slate-800/90 border border-slate-700 text-slate-200 p-3.5 rounded-xl mb-6 shadow-md text-xs leading-relaxed flex items-start gap-3">
+            <span class="text-xl">💡</span>
+            <div class="space-y-1">
+                <strong class="text-amber-400 font-semibold text-sm">操作與頁腳自訂說明：</strong>
+                <p>1. <b>頁腳全區自由編輯</b>：每頁左下角的頁腳文字會預設與行程總標題同步，但您也可以隨時<b>點擊頁腳直接修改文字</b>，或在下方填寫自訂版權/備註資訊。</p>
+                <p>2. <b>點擊即可修改</b>：主標題、副標題、日期、每日主題、行程格子、注意事項與頁腳均可直接打字編輯。</p>
+                <p>3. <b>防錯重置機制</b>：若想還原為初始範例，按右上角 <b class="text-amber-400">【🔄 重置預設範例】</b> 即可一鍵還原。</p>
+            </div>
+        </div>
+
+        <!-- Target Container for Dynamic A4 Pages -->
+        <div id="pages-render-target"></div>
+    </div>
+
+    <!-- Custom Modal Popup for Reset Confirmation -->
+    <div id="custom-modal" class="modal-overlay hidden no-print">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-md w-full shadow-2xl text-white space-y-4">
+            <div class="flex items-center gap-3">
+                <span class="text-3xl">⚠️</span>
+                <div>
+                    <h3 class="text-lg font-bold text-amber-400">確認重置為預設行程？</h3>
+                    <p class="text-xs text-slate-400">重置後會完全清除瀏覽器暫存，復原為初始的『關西與中京10日行程範例』。</p>
+                </div>
+            </div>
+            <p class="text-sm text-slate-300 bg-slate-800 p-3 rounded-lg border border-slate-700">
+                此動作將會覆蓋您目前編輯的所有修改。如果您想保留目前的行程，請先點擊「匯出行程檔」。
+            </p>
+            <div class="flex justify-end gap-3 pt-2">
+                <button onclick="closeModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg text-xs transition">
+                    取消
+                </button>
+                <button onclick="executeReset()" class="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs transition shadow">
+                    確定重置
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Storage Constant Key
+        const STORAGE_KEY = 'universal_itinerary_db_v2';
+
+        // Default Master Data Definition
+        const sampleItineraryData = {
+            mainTitle: "關西．中京 10 日跨年典藏行程",
+            subTitle: "KYOTO • OMIHACHIMAN • NAGOYA • SUZUKA • OSAKA",
+            dateRange: "2025/12/25 － 2026/01/03",
+            footerText: "關西．中京 10 日跨年典藏行程 (2025/12/25 － 2026/01/03)",
+            noticeTitle: "📌 行前備忘與跨年特別提醒",
+            notices: [
+                { title: "交通卡與票券", content: "ICOCA卡加值、KKday包車憑證、JR 電車時刻預訂確認。" },
+                { title: "USJ 跨年戰略", content: "夜間低溫保暖（暖暖包/發熱衣）、行動電源、跨年門票憑證。" },
+                { title: "新春購物提醒", content: "1/2 日本初賣折扣大，熱門福袋建議提前至百貨現場排隊。" }
+            ],
+            days: [
+                {
+                    day: "12/25（五）",
+                    region: "DAY 1 • 京都",
+                    title: "抵達京都與北野天滿宮終い天神市集",
+                    accent: "border-red-600",
+                    items: [
+                        { type: "spot", text: "抵達京都 Check-in" },
+                        { type: "spot", text: "北野天滿宮（終い天神市集）" },
+                        { type: "food", text: "今宮神社（炙烤麻糬）" },
+                        { type: "spot", text: "金閣寺夕陽" },
+                        { type: "food", text: "京豆腐 / 高級壽喜燒晚餐" }
+                    ]
+                },
+                {
+                    day: "12/26（六）",
+                    region: "DAY 2 • 海之京都",
+                    title: "海之京都包車專車巡禮（伊根舟屋 & 天橋立）",
+                    accent: "border-blue-600",
+                    items: [
+                        { type: "traffic", text: "KKday 一日遊包車出發" },
+                        { type: "spot", text: "伊根舟屋散策" },
+                        { type: "spot", text: "伊根灣遊覽船（餵海鷗）" },
+                        { type: "spot", text: "天橋立飛龍觀觀景台" },
+                        { type: "food", text: "晚餐：冬季限定松葉蟹大餐" }
+                    ]
+                },
+                {
+                    day: "12/27（日）",
+                    region: "DAY 3 • 洛北",
+                    title: "下鴨神社糺之森與貴船冬夜點燈",
+                    accent: "border-emerald-600",
+                    items: [
+                        { type: "spot", text: "下鴨神社（糺之森 + 冰雪蕾絲御守）" },
+                        { type: "food", text: "午餐：出町柳鯖魚壽司" },
+                        { type: "traffic", text: "搭乘叡山電車前往貴船" },
+                        { type: "spot", text: "貴船神社（紅燈籠冬夜點燈）" }
+                    ]
+                },
+                {
+                    day: "12/28（一）",
+                    region: "DAY 4 • 近江/名古屋",
+                    title: "水鄉近江八幡漫遊與移防名古屋",
+                    accent: "border-amber-600",
+                    items: [
+                        { type: "traffic", text: "京都退房 ➔ JR 電車順遊近江八幡" },
+                        { type: "spot", text: "漫步八幡堀古風水岸" },
+                        { type: "food", text: "美食：大啖頂級近江牛" },
+                        { type: "hotel", text: "抵達名古屋 Check-in ➔ 市區散步" }
+                    ]
+                },
+                {
+                    day: "12/29（二）",
+                    region: "DAY 5 • 三重鈴鹿",
+                    title: "三重鈴鹿賽車樂園競速體驗",
+                    accent: "border-purple-600",
+                    items: [
+                        { type: "traffic", text: "名古屋 ➔ 近鐵/巴士至三重鈴鹿賽車樂園" },
+                        { type: "spot", text: "鈴鹿賽車樂園（卡丁車與機械設施）" },
+                        { type: "food", text: "返回名古屋享用特色晚餐（手羽先/味噌豬排）" }
+                    ]
+                },
+                {
+                    day: "12/30（三）",
+                    region: "DAY 6 • 名古屋/大阪",
+                    title: "移動返回大阪梅田 & 朋友居酒屋歡聚",
+                    accent: "border-amber-600",
+                    items: [
+                        { type: "traffic", text: "名古屋退房 ➔ 15:30 搭車回梅田飯店 Check-in" },
+                        { type: "food", text: "梅田周邊居酒屋與朋友歡聚" }
+                    ]
+                },
+                {
+                    day: "12/31（四）",
+                    region: "DAY 7 • 大阪跨年",
+                    title: "海遊館鯨鯊巡禮 & USJ 環球影城跨年夜狂歡",
+                    accent: "border-red-600",
+                    items: [
+                        { type: "spot", text: "白天：海遊館（看巨大鯨鯊）" },
+                        { type: "note", text: "下午：回梅田飯店充血備戰" },
+                        { type: "spot", text: "晚上：USJ 跨年派對狂歡（續戰至 1/1）" }
+                    ]
+                },
+                {
+                    day: "1/1（五）",
+                    region: "DAY 8 • USJ/梅田",
+                    title: "USJ 全日狂歡續戰 & 傍晚補眠休息",
+                    accent: "border-blue-600",
+                    items: [
+                        { type: "spot", text: "USJ 環球影城全天狂歡" },
+                        { type: "hotel", text: "傍晚返回梅田飯店休息補眠" }
+                    ]
+                },
+                {
+                    day: "1/2（六）",
+                    region: "DAY 9 • 大阪購物",
+                    title: "新春初賣折扣季狂購 & 潮流選物巡禮",
+                    accent: "border-emerald-600",
+                    items: [
+                        { type: "shop", text: "梅田初賣折扣季 & 福袋狂購" },
+                        { type: "shop", text: "中崎町 / 心齋橋潮流選物" },
+                        { type: "spot", text: "備選：LaLaport EXPOCITY 巨型商場" }
+                    ]
+                },
+                {
+                    day: "1/3（日）",
+                    region: "DAY 10 • 返台",
+                    title: "睡到自然醒 & 關西機場免稅採買返台",
+                    accent: "border-purple-600",
+                    items: [
+                        { type: "note", text: "睡到自然醒悠閒退房" },
+                        { type: "traffic", text: "10:00 前往關西國際機場 (KIX)" },
+                        { type: "shop", text: "機場免稅店最後採買伴手禮" },
+                        { type: "traffic", text: "14:00 順利搭機返台" }
+                    ]
+                }
+            ]
+        };
+
+        // Active State Variable
+        let appData = {};
+
+        function initApp() {
+            const saved = localStorage.getItem(STORAGE_KEY);
+            if (saved) {
+                try {
+                    appData = JSON.parse(saved);
+                } catch(e) {
+                    console.error("Failed to parse stored itinerary, resetting to default.", e);
+                    appData = JSON.parse(JSON.stringify(sampleItineraryData));
+                }
+            } else {
+                appData = JSON.parse(JSON.stringify(sampleItineraryData));
+            }
+            renderApp();
+        }
+
+        function saveData() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+            } catch(e) {
+                console.error("Storage error:", e);
+            }
+        }
+
+        // Modal Controls for Reset
+        function confirmResetModal() {
+            document.getElementById('custom-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('custom-modal').classList.add('hidden');
+        }
+
+        // Guaranteed Bulletproof Reset Function
+        function executeReset() {
+            closeModal();
+            // 1. Clear LocalStorage
+            localStorage.removeItem(STORAGE_KEY);
+            
+            // 2. Deep copy sample default data
+            appData = JSON.parse(JSON.stringify(sampleItineraryData));
+            
+            // 3. Save new clean state
+            saveData();
+            
+            // 4. Force full re-render
+            renderApp();
+        }
+
+        function getTagClass(type) {
+            switch(type) {
+                case 'food': return 'pill-food';
+                case 'spot': return 'pill-spot';
+                case 'traffic': return 'pill-traffic';
+                case 'hotel': return 'pill-hotel';
+                case 'shop': return 'pill-shop';
+                default: return 'pill-note';
+            }
+        }
+
+        function getTagLabel(type) {
+            switch(type) {
+                case 'food': return '🍽️ 美食';
+                case 'spot': return '📍 景點';
+                case 'traffic': return '🚃 交通';
+                case 'hotel': return '🏨 住宿';
+                case 'shop': return '🛍️ 購物';
+                default: return '📌 備註';
+            }
+        }
+
+        function renderApp() {
+            const target = document.getElementById('pages-render-target');
+            if (!target) return;
+            target.innerHTML = '';
+
+            // 5 days per A4 page calculation
+            const daysPerPage = 5;
+            const totalDays = appData.days ? appData.days.length : 0;
+            const totalPages = Math.max(1, Math.ceil(totalDays / daysPerPage));
+
+            for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
+                const pageContainer = document.createElement('div');
+                pageContainer.className = 'page-container flex flex-col justify-between';
+
+                const startDayIdx = pageIdx * daysPerPage;
+                const endDayIdx = Math.min(startDayIdx + daysPerPage, totalDays);
+                const pageDays = appData.days.slice(startDayIdx, endDayIdx);
+
+                // Header Block
+                let headerHtml = `
+                    <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-3 rounded-xl border-b-4 ${pageIdx % 2 === 0 ? 'border-red-700' : 'border-blue-600'} shadow-sm flex justify-between items-center mb-3">
+                        <div class="flex-1 pr-4">
+                            <input type="text" value="${escapeHtml(appData.mainTitle)}" onchange="updateGlobalField('mainTitle', this.value)" 
+                                class="w-full bg-transparent text-lg font-extrabold tracking-wider text-amber-400 focus:outline-none focus:bg-slate-800/80 rounded px-1" placeholder="輸入行程總標題..." />
+                            <input type="text" value="${escapeHtml(appData.subTitle)}" onchange="updateGlobalField('subTitle', this.value)" 
+                                class="w-full bg-transparent text-[8.5pt] text-slate-400 mt-0.5 focus:outline-none focus:bg-slate-800/80 rounded px-1" placeholder="輸入城市或副標題..." />
+                        </div>
+                        <div class="shrink-0 bg-slate-800/80 border border-slate-700 text-slate-200 text-xs font-bold px-2.5 py-1 rounded-lg">
+                            <input type="text" value="${escapeHtml(appData.dateRange)}" onchange="updateGlobalField('dateRange', this.value)" 
+                                class="bg-transparent text-center font-bold text-amber-300 focus:outline-none w-40 text-xs" placeholder="日期區間" />
+                        </div>
+                    </div>
+                `;
+
+                // Days Rendering Loop
+                let daysHtml = pageDays.map((dayData, subIdx) => {
+                    const realDayIdx = startDayIdx + subIdx;
+
+                    let itemsHtml = dayData.items.map((item, itemIdx) => `
+                        <div class="group relative flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-md p-1 hover:border-blue-400 transition">
+                            <select onchange="updateItemType(${realDayIdx}, ${itemIdx}, this.value)" class="no-print bg-transparent text-[8pt] font-semibold text-slate-600 focus:outline-none cursor-pointer">
+                                <option value="spot" ${item.type === 'spot' ? 'selected' : ''}>📍 景點</option>
+                                <option value="food" ${item.type === 'food' ? 'selected' : ''}>🍽️ 美食</option>
+                                <option value="traffic" ${item.type === 'traffic' ? 'selected' : ''}>🚃 交通</option>
+                                <option value="hotel" ${item.type === 'hotel' ? 'selected' : ''}>🏨 住宿</option>
+                                <option value="shop" ${item.type === 'shop' ? 'selected' : ''}>🛍️ 購物</option>
+                                <option value="note" ${item.type === 'note' ? 'selected' : ''}>📌 備註</option>
+                            </select>
+                            <span class="pill-item ${getTagClass(item.type)} hidden print:inline-flex">
+                                ${getTagLabel(item.type)}
+                            </span>
+                            
+                            <input type="text" value="${escapeHtml(item.text)}" 
+                                onchange="updateItemText(${realDayIdx}, ${itemIdx}, this.value)" 
+                                class="flex-1 min-w-0 bg-transparent text-[8.5pt] text-slate-800 font-medium focus:outline-none focus:bg-white focus:ring-1 focus:ring-blue-500 rounded px-1"
+                                placeholder="填寫行程內容..." />
+
+                            <button onclick="removeItem(${realDayIdx}, ${itemIdx})" class="no-print text-slate-400 hover:text-red-600 text-xs px-1 opacity-40 group-hover:opacity-100 transition" title="刪除此欄位">
+                                ✕
+                            </button>
+                        </div>
+                    `).join('');
+
+                    return `
+                        <div class="bg-white border border-slate-300 border-l-[5px] ${dayData.accent || 'border-blue-600'} rounded-lg p-2 shadow-sm mb-2">
+                            <div class="flex items-start gap-2">
+                                <!-- Date & Day Box -->
+                                <div class="w-24 shrink-0 bg-slate-100 border border-slate-200 rounded-md p-1 text-center">
+                                    <input type="text" value="${escapeHtml(dayData.day)}" onchange="updateDayField(${realDayIdx}, 'day', this.value)" 
+                                        class="w-full bg-transparent text-center text-slate-900 font-black text-[9pt] focus:outline-none" placeholder="12/25（五）" />
+                                    <input type="text" value="${escapeHtml(dayData.region)}" onchange="updateDayField(${realDayIdx}, 'region', this.value)" 
+                                        class="w-full bg-slate-200 text-slate-700 text-[7pt] font-bold rounded mt-0.5 text-center focus:outline-none" placeholder="DAY 1 • 京都" />
+                                </div>
+
+                                <!-- Right Schedule Details -->
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex justify-between items-center mb-1 gap-2">
+                                        <input type="text" value="${escapeHtml(dayData.title)}" onchange="updateDayField(${realDayIdx}, 'title', this.value)" 
+                                            class="flex-1 bg-transparent text-slate-900 font-bold text-[9pt] focus:outline-none focus:bg-slate-50 rounded px-1" placeholder="請輸入今日主題..." />
+                                        
+                                        <div class="no-print shrink-0 flex items-center gap-1">
+                                            <button onclick="addItem(${realDayIdx})" class="text-[7.5pt] font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded transition">
+                                                + 新增格子
+                                            </button>
+                                            <button onclick="removeDay(${realDayIdx})" class="text-[7.5pt] font-bold bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 px-1.5 py-0.5 rounded transition" title="刪除整天行程">
+                                                ✕ 刪除當天
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                                        ${itemsHtml}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                // Notices Box (Appears on the last page)
+                let noticeHtml = '';
+                if (pageIdx === totalPages - 1 && appData.notices) {
+                    let noticeItems = appData.notices.map((n, nIdx) => `
+                        <div class="bg-white border border-slate-200 p-1.5 rounded relative group">
+                            <input type="text" value="${escapeHtml(n.title)}" onchange="updateNoticeField(${nIdx}, 'title', this.value)" 
+                                class="w-full font-bold text-[8.5pt] text-slate-800 bg-transparent focus:outline-none focus:bg-slate-100 rounded" placeholder="注意事項類別" />
+                            <textarea onchange="updateNoticeField(${nIdx}, 'content', this.value)" rows="2"
+                                class="w-full text-[7.5pt] text-slate-600 bg-transparent focus:outline-none focus:bg-slate-100 rounded mt-0.5 resize-none" placeholder="注意事項詳細說明...">${escapeHtml(n.content)}</textarea>
+                            <button onclick="removeNotice(${nIdx})" class="no-print absolute top-1 right-1 text-slate-400 hover:text-red-600 text-[10px] opacity-40 group-hover:opacity-100">✕</button>
+                        </div>
+                    `).join('');
+
+                    noticeHtml = `
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg p-2 mt-2">
+                            <div class="flex justify-between items-center mb-1 pb-1 border-b">
+                                <input type="text" value="${escapeHtml(appData.noticeTitle)}" onchange="updateGlobalField('noticeTitle', this.value)" 
+                                    class="text-xs font-bold text-slate-800 bg-transparent focus:outline-none focus:bg-white rounded px-1" />
+                                <button onclick="addNotice()" class="no-print text-[7.5pt] font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded">
+                                    + 新增備註
+                                </button>
+                            </div>
+                            <div class="grid grid-cols-3 gap-1.5">
+                                ${noticeItems}
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // Page Footer
+                const footerContent = appData.footerText !== undefined ? appData.footerText : `${appData.mainTitle || ''} (${appData.dateRange || ''})`;
+                const footerHtml = `
+                    <div class="pt-1.5 border-t border-dashed border-slate-300 flex justify-between items-center text-[8pt] text-slate-500 mt-1">
+                        <input type="text" value="${escapeHtml(footerContent)}" onchange="updateGlobalField('footerText', this.value)"
+                            class="flex-1 bg-transparent text-slate-500 hover:text-slate-700 focus:text-slate-900 focus:bg-slate-100 rounded px-1 focus:outline-none text-[8pt]" placeholder="自訂頁腳文字/備註/作者資訊..." />
+                        <span class="font-bold text-slate-700 shrink-0 ml-2">第 ${pageIdx + 1} 頁 / 共 ${totalPages} 頁</span>
+                    </div>
+                `;
+
+                pageContainer.innerHTML = `
+                    <div>
+                        ${headerHtml}
+                        <div class="space-y-1">${daysHtml}</div>
+                        ${noticeHtml}
+                    </div>
+                    ${footerHtml}
+                `;
+
+                target.appendChild(pageContainer);
+            }
+        }
+        function updateGlobalField(field, value) {
+            appData[field] = value;
+            saveData();
+        }
+
+        function updateDayField(dayIdx, field, value) {
+            appData.days[dayIdx][field] = value;
+            saveData();
+        }
+
+        function updateItemText(dayIdx, itemIdx, value) {
+            appData.days[dayIdx].items[itemIdx].text = value;
+            saveData();
+        }
+
+        function updateItemType(dayIdx, itemIdx, type) {
+            appData.days[dayIdx].items[itemIdx].type = type;
+            saveData();
+            renderApp();
+        }
+
+        function addItem(dayIdx) {
+            appData.days[dayIdx].items.push({ type: 'spot', text: '新行程項目' });
+            saveData();
+            renderApp();
+        }
+
+        function removeItem(dayIdx, itemIdx) {
+            appData.days[dayIdx].items.splice(itemIdx, 1);
+            saveData();
+            renderApp();
+        }
+
+        function addNewDay() {
+            const nextDayNum = appData.days.length + 1;
+            const accents = ["border-red-600", "border-blue-600", "border-emerald-600", "border-amber-600", "border-purple-600"];
+            appData.days.push({
+                day: `第 ${nextDayNum} 天`,
+                region: `DAY ${nextDayNum} • 城市`,
+                title: "新天數行程規劃",
+                accent: accents[(nextDayNum - 1) % accents.length],
+                items: [
+                    { type: "spot", text: "早晨行程 / 景點" },
+                    { type: "food", text: "午餐建議" },
+                    { type: "spot", text: "下午行程" }
+                ]
+            });
+            saveData();
+            renderApp();
+        }
+
+        function removeDay(dayIdx) {
+            appData.days.splice(dayIdx, 1);
+            saveData();
+            renderApp();
+        }
+
+        function updateNoticeField(nIdx, field, value) {
+            appData.notices[nIdx][field] = value;
+            saveData();
+        }
+
+        function addNotice() {
+            appData.notices.push({ title: "備忘事項", content: "填寫備忘內容..." });
+            saveData();
+            renderApp();
+        }
+
+        function removeNotice(nIdx) {
+            appData.notices.splice(nIdx, 1);
+            saveData();
+            renderApp();
+        }
+
+        function exportJSON() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appData, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `${appData.mainTitle || 'my_itinerary'}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        function importJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    if (importedData.days && Array.isArray(importedData.days)) {
+                        appData = importedData;
+                        saveData();
+                        renderApp();
+                    } else {
+                        alert("檔案格式不符，請確認是正確的行程 JSON 檔。");
+                    }
+                } catch(err) {
+                    alert("解析檔案失敗：" + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str).replace(/"/g, '&quot;');
+        }
+
+        // Initialize App on Window Load
+        window.onload = initApp;
+    </script>
+</body>
+</html>
