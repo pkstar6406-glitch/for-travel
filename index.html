@@ -124,6 +124,9 @@
                 <button onclick="addNewDay()" class="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition flex items-center gap-1 shadow">
                     <span>➕</span> 新增一天
                 </button>
+                <button onclick="openPromptModal()" class="px-3 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg transition flex items-center gap-1 shadow">
+                    <span>🤖</span> 生成 AI 繪圖指令
+                </button>
                 <button onclick="exportJSON()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium rounded-lg border border-slate-700 transition flex items-center gap-1">
                     <span>💾</span> 匯出行程檔
                 </button>
@@ -147,15 +150,46 @@
         <div class="no-print bg-slate-800/90 border border-slate-700 text-slate-200 p-3.5 rounded-xl mb-6 shadow-md text-xs leading-relaxed flex items-start gap-3">
             <span class="text-xl">💡</span>
             <div class="space-y-1">
-                <strong class="text-amber-400 font-semibold text-sm">操作與頁腳自訂說明：</strong>
-                <p>1. <b>頁腳全區自由編輯</b>：每頁左下角的頁腳文字會預設與行程總標題同步，但您也可以隨時<b>點擊頁腳直接修改文字</b>，或在下方填寫自訂版權/備註資訊。</p>
-                <p>2. <b>點擊即可修改</b>：主標題、副標題、日期、每日主題、行程格子、注意事項與頁腳均可直接打字編輯。</p>
-                <p>3. <b>防錯重置機制</b>：若想還原為初始範例，按右上角 <b class="text-amber-400">【🔄 重置預設範例】</b> 即可一鍵還原。</p>
+                <strong class="text-amber-400 font-semibold text-sm">操作說明：</strong>
+                <p>1. <b>點擊直接修改</b>：所有標題、日期、行程格子、備註與頁腳均可點擊隨時打字修改。</p>
+                <p>2. <b>🤖 生成 AI 繪圖指令</b>：自動擷取整份行程內容，一鍵生成 Midjourney 或 DALL-E 3 的 Prompt 提示詞，方便生成精美的旅遊手帳配圖或視覺海報！</p>
+                <p>3. <b>🖨️ 列印 / 儲存為 A4 PDF</b>：直接將編排完成的行程以標準 A4 格式輸出或列印成 PDF！</p>
             </div>
         </div>
 
         <!-- Target Container for Dynamic A4 Pages -->
         <div id="pages-render-target"></div>
+    </div>
+
+    <!-- AI Prompt Generator Modal -->
+    <div id="prompt-modal" class="modal-overlay hidden no-print">
+        <div class="bg-slate-900 border border-slate-700 rounded-xl p-6 max-w-2xl w-full shadow-2xl text-white space-y-4 max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl">🤖</span>
+                    <h3 class="text-lg font-bold text-amber-400">AI 繪圖指令生成器 (Midjourney / DALL-E 3)</h3>
+                </div>
+                <button onclick="closePromptModal()" class="text-slate-400 hover:text-white text-lg">✕</button>
+            </div>
+            
+            <p class="text-xs text-slate-300">
+                此指令已根據您目前的行程標題、景點與美食關鍵字自動彙整。複製後可直接貼入 ChatGPT / Midjourney 生態系，製作專屬旅遊手帳插圖！
+            </p>
+
+            <textarea id="ai-prompt-textarea" class="w-full flex-1 bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs text-emerald-400 font-mono resize-none focus:outline-none focus:border-amber-500" rows="12" readonly></textarea>
+
+            <div class="flex justify-between items-center pt-2 border-t border-slate-800">
+                <span id="copy-status-msg" class="text-xs text-emerald-400 font-semibold opacity-0 transition-opacity">已成功複製到剪貼簿！</span>
+                <div class="flex gap-3">
+                    <button onclick="closePromptModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg text-xs transition">
+                        關閉
+                    </button>
+                    <button onclick="copyAIPrompt()" class="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg text-xs transition shadow flex items-center gap-1">
+                        <span>📋</span> 複製繪圖指令
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Custom Modal Popup for Reset Confirmation -->
@@ -183,10 +217,8 @@
     </div>
 
     <script>
-        // Storage Constant Key
         const STORAGE_KEY = 'universal_itinerary_db_v2';
 
-        // Default Master Data Definition
         const sampleItineraryData = {
             mainTitle: "關西．中京 10 日跨年典藏行程",
             subTitle: "KYOTO • OMIHACHIMAN • NAGOYA • SUZUKA • OSAKA",
@@ -317,7 +349,6 @@
             ]
         };
 
-        // Active State Variable
         let appData = {};
 
         function initApp() {
@@ -343,7 +374,6 @@
             }
         }
 
-        // Modal Controls for Reset
         function confirmResetModal() {
             document.getElementById('custom-modal').classList.remove('hidden');
         }
@@ -352,19 +382,11 @@
             document.getElementById('custom-modal').classList.add('hidden');
         }
 
-        // Guaranteed Bulletproof Reset Function
         function executeReset() {
             closeModal();
-            // 1. Clear LocalStorage
             localStorage.removeItem(STORAGE_KEY);
-            
-            // 2. Deep copy sample default data
             appData = JSON.parse(JSON.stringify(sampleItineraryData));
-            
-            // 3. Save new clean state
             saveData();
-            
-            // 4. Force full re-render
             renderApp();
         }
 
@@ -395,7 +417,6 @@
             if (!target) return;
             target.innerHTML = '';
 
-            // 5 days per A4 page calculation
             const daysPerPage = 5;
             const totalDays = appData.days ? appData.days.length : 0;
             const totalPages = Math.max(1, Math.ceil(totalDays / daysPerPage));
@@ -403,12 +424,12 @@
             for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
                 const pageContainer = document.createElement('div');
                 pageContainer.className = 'page-container flex flex-col justify-between';
+                pageContainer.id = `a4-page-${pageIdx + 1}`;
 
                 const startDayIdx = pageIdx * daysPerPage;
                 const endDayIdx = Math.min(startDayIdx + daysPerPage, totalDays);
                 const pageDays = appData.days.slice(startDayIdx, endDayIdx);
 
-                // Header Block
                 let headerHtml = `
                     <div class="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-3 rounded-xl border-b-4 ${pageIdx % 2 === 0 ? 'border-red-700' : 'border-blue-600'} shadow-sm flex justify-between items-center mb-3">
                         <div class="flex-1 pr-4">
@@ -424,7 +445,6 @@
                     </div>
                 `;
 
-                // Days Rendering Loop
                 let daysHtml = pageDays.map((dayData, subIdx) => {
                     const realDayIdx = startDayIdx + subIdx;
 
@@ -456,7 +476,6 @@
                     return `
                         <div class="bg-white border border-slate-300 border-l-[5px] ${dayData.accent || 'border-blue-600'} rounded-lg p-2 shadow-sm mb-2">
                             <div class="flex items-start gap-2">
-                                <!-- Date & Day Box -->
                                 <div class="w-24 shrink-0 bg-slate-100 border border-slate-200 rounded-md p-1 text-center">
                                     <input type="text" value="${escapeHtml(dayData.day)}" onchange="updateDayField(${realDayIdx}, 'day', this.value)" 
                                         class="w-full bg-transparent text-center text-slate-900 font-black text-[9pt] focus:outline-none" placeholder="12/25（五）" />
@@ -464,7 +483,6 @@
                                         class="w-full bg-slate-200 text-slate-700 text-[7pt] font-bold rounded mt-0.5 text-center focus:outline-none" placeholder="DAY 1 • 京都" />
                                 </div>
 
-                                <!-- Right Schedule Details -->
                                 <div class="flex-1 min-w-0">
                                     <div class="flex justify-between items-center mb-1 gap-2">
                                         <input type="text" value="${escapeHtml(dayData.title)}" onchange="updateDayField(${realDayIdx}, 'title', this.value)" 
@@ -489,7 +507,6 @@
                     `;
                 }).join('');
 
-                // Notices Box (Appears on the last page)
                 let noticeHtml = '';
                 if (pageIdx === totalPages - 1 && appData.notices) {
                     let noticeItems = appData.notices.map((n, nIdx) => `
@@ -518,7 +535,6 @@
                     `;
                 }
 
-                // Page Footer
                 const footerContent = appData.footerText !== undefined ? appData.footerText : `${appData.mainTitle || ''} (${appData.dateRange || ''})`;
                 const footerHtml = `
                     <div class="pt-1.5 border-t border-dashed border-slate-300 flex justify-between items-center text-[8pt] text-slate-500 mt-1">
@@ -540,6 +556,7 @@
                 target.appendChild(pageContainer);
             }
         }
+
         function updateGlobalField(field, value) {
             appData[field] = value;
             saveData();
@@ -614,6 +631,51 @@
             renderApp();
         }
 
+        function openPromptModal() {
+            const promptTextarea = document.getElementById('ai-prompt-textarea');
+            if (!promptTextarea) return;
+
+            let prompt = `Create a visually stunning, highly-detailed travel aesthetic collage inspired by the trip "${appData.mainTitle || 'Japan Travel'}" (${appData.dateRange || ''}).\n\n`;
+            prompt += `Key Locations & Cultural Highlights:\n`;
+
+            if (appData.days && appData.days.length > 0) {
+                appData.days.forEach((d, i) => {
+                    const spots = d.items.filter(item => item.type === 'spot' || item.type === 'food').map(item => item.text).join(', ');
+                    if (spots) {
+                        prompt += `- ${d.region || `Day ${i+1}`}: ${d.title} (${spots})\n`;
+                    }
+                });
+            }
+
+            prompt += `\nVisual Style & Mood:\n`;
+            prompt += `Japanese watercolor ink journal style, isometric travel map layout, vibrant color palette, cozy aesthetic, cinematic lighting, ultra-detailed 8k resolution, flat vector art details, Studio Ghibli inspired color tones, clean grid arrangement --ar 16:9 --v 6.0`;
+
+            promptTextarea.value = prompt;
+            document.getElementById('prompt-modal').classList.remove('hidden');
+        }
+
+        function closePromptModal() {
+            document.getElementById('prompt-modal').classList.add('hidden');
+            const msg = document.getElementById('copy-status-msg');
+            if (msg) msg.style.opacity = '0';
+        }
+
+        function copyAIPrompt() {
+            const promptTextarea = document.getElementById('ai-prompt-textarea');
+            if (!promptTextarea) return;
+
+            promptTextarea.select();
+            document.execCommand('copy');
+
+            const msg = document.getElementById('copy-status-msg');
+            if (msg) {
+                msg.style.opacity = '1';
+                setTimeout(() => {
+                    msg.style.opacity = '0';
+                }, 2500);
+            }
+        }
+
         function exportJSON() {
             const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(appData, null, 2));
             const downloadAnchor = document.createElement('a');
@@ -651,7 +713,6 @@
             return String(str).replace(/"/g, '&quot;');
         }
 
-        // Initialize App on Window Load
         window.onload = initApp;
     </script>
 </body>
